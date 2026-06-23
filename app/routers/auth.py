@@ -37,22 +37,6 @@ def authenticate_user(session:SessionDep, email: str, password: str):
     if not password_hash.verify(password, user.password_hash):
         return None
     return user
-    
-def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    session: SessionDep,
-) -> User:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
-    user = session.get(User, int(user_id))
-    if user is None:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
 
 @router.post("/register")
 def register_user(body: UserCreate, session: SessionDep) -> AuthResponse:
@@ -74,7 +58,3 @@ def login_user(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], sessi
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
     token = create_access_token(user.id)
     return AuthResponse(access_token=token, user=user)
-
-@router.get("/me", response_model=UserPublic)
-def read_me(current_user: Annotated[User, Depends(get_current_user)]):
-    return current_user
