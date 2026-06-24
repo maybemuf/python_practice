@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timedelta, timezone
@@ -8,10 +9,6 @@ from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_409_CONFLICT
 from app.dependencies import SessionDep
 from app.models.user import User, UserCreate, AuthResponse, UserPublic
 import jwt
-
-SECRET_KEY="2d788292a211e87247fbe424e0cab534c0558752396d3c8910cc5bd1c116b3ee"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -24,9 +21,9 @@ router = APIRouter(
 def create_access_token(user_id: int):
     to_encode = {
         "sub": str(user_id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")),
     }
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, os.getenv("JWT_SECRET_KEY"), algorithm = os.getenv("JWT_ALGORITHM"))
 def get_user_with_email(session: SessionDep, email: str) -> User | None:
     return session.exec(select(User).where(User.email == email)).first()
 
