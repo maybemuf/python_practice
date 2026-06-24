@@ -1,12 +1,16 @@
+from datetime import datetime
+import uuid
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from sqlmodel import SQLModel, Field
+
+from app.models.timestamp import TimestampMixin
 
 class UserBase(SQLModel):
     email: EmailStr = Field(index=True, unique=True)
     username: str = Field(index=True, max_length=30, min_length=3)
 
-class User(UserBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+class User(UserBase, TimestampMixin, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     password_hash: str
 
 class UserCreate(UserBase):
@@ -24,7 +28,9 @@ class UserCreate(UserBase):
         return v
 
 class UserPublic(UserBase):
-    id: int
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
 
 class AuthResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

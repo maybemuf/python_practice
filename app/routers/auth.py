@@ -21,9 +21,9 @@ router = APIRouter(
 def create_access_token(user_id: int):
     to_encode = {
         "sub": str(user_id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes = os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"]),
     }
-    return jwt.encode(to_encode, os.getenv("JWT_SECRET_KEY"), algorithm = os.getenv("JWT_ALGORITHM"))
+    return jwt.encode(to_encode, os.environ["JWT_SECRET_KEY"], algorithm = os.environ["JWT_ALGORITHM"])
 def get_user_with_email(session: SessionDep, email: str) -> User | None:
     return session.exec(select(User).where(User.email == email)).first()
 
