@@ -9,4 +9,4 @@ wheels/
 # Virtual environments
 .venv
 .env
-database.db
+app.db
