@@ -551,8 +551,8 @@ dependencies = [
     { name = "alembic" },
     { name = "fastapi", extra = ["standard"] },
     { name = "pwdlib", extra = ["argon2"] },
+    { name = "pydantic-settings" },
     { name = "pyjwt" },
-    { name = "python-dotenv" },
     { name = "sqlmodel" },
 ]
 
@@ -561,8 +561,8 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.138.0" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.0" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pyjwt", specifier = ">=2.13.0" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "sqlmodel", specifier = ">=0.0.38" },
 ]
 
