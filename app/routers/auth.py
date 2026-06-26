@@ -1,11 +1,11 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from datetime import datetime, timedelta, timezone
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from sqlmodel import select
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_409_CONFLICT
 from app.dependencies import SessionDep
+from app.models.exceptions import InvalidCredentialsError, UserAlreadyExistsError
 from app.models.user import User, UserCreate, AuthResponse
 from app.settings import settings
 import jwt
@@ -24,6 +24,7 @@ def create_access_token(user_id: int):
         "exp": datetime.now(timezone.utc) + timedelta(minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm = settings.JWT_ALGORITHM)
+
 def get_user_with_email(session: SessionDep, email: str) -> User | None:
     return session.exec(select(User).where(User.email == email)).first()
 
@@ -39,7 +40,7 @@ def authenticate_user(session:SessionDep, email: str, password: str):
 def register_user(body: UserCreate, session: SessionDep) -> AuthResponse:
     existing = get_user_with_email(session, email=body.email)
     if existing is not None:
-        raise HTTPException(status_code=HTTP_409_CONFLICT, detail="User with this email already exists")
+        raise UserAlreadyExistsError()
     hashed_pass = password_hash.hash(body.password)
     db_user = User.model_validate(body, update={"password_hash": hashed_pass})
     session.add(db_user)
@@ -52,6 +53,6 @@ def register_user(body: UserCreate, session: SessionDep) -> AuthResponse:
 def login_user(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDep) -> AuthResponse:
     user = authenticate_user(session, form_data.username, form_data.password)
     if not user:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+        raise InvalidCredentialsError()
     token = create_access_token(user.id)
     return AuthResponse(access_token=token, user=user)

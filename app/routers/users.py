@@ -1,13 +1,11 @@
 import jwt
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException
-from starlette.status import HTTP_401_UNAUTHORIZED
-from app import settings
+from fastapi import APIRouter, Depends
 from app.dependencies import SessionDep
+from app.models.exceptions import UnauthorizedError, UserNotFoundError
 from app.models.user import User, UserPublic
 from app.routers.auth import oauth2_scheme
 from app.settings import settings
-
 
 router = APIRouter(
     prefix="/users",
@@ -22,12 +20,12 @@ def get_current_user(
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
-            raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            raise UnauthorizedError()
     except jwt.PyJWTError:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise UnauthorizedError()
     user = session.get(User, int(user_id))
     if user is None:
-        raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise UserNotFoundError()
     return user
 
 @router.get("/me", response_model=UserPublic)
