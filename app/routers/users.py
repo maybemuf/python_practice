@@ -1,4 +1,5 @@
 import jwt
+from uuid import UUID
 from typing import Annotated
 from fastapi import APIRouter, Depends
 from app.dependencies import SessionDep
@@ -23,7 +24,7 @@ def get_current_user(
             raise UnauthorizedError()
     except jwt.PyJWTError:
         raise UnauthorizedError()
-    user = session.get(User, int(user_id))
+    user = session.get(User, UUID(user_id))
     if user is None:
         raise UserNotFoundError()
     return user
