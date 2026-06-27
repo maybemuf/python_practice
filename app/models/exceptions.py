@@ -3,6 +3,7 @@ from enum import Enum
 class ApiExceptionType(str, Enum):
     INTERNAL_ERROR = "internal-error"
     INVALID_CREDENTIALS = "invalid-credentials"
+    INVALID_REFRESH = "invalid-refresh"
     USER_EXISTS = "user-exists"
     NOT_FOUND = "not-found"
     UNAUTHORIZED = "unauthorized"
@@ -45,6 +46,11 @@ class InvalidCredentialsError(ApiException):
     status_code = 401
     type = ApiExceptionType.INVALID_CREDENTIALS
     message = "Incorrect email or password"
+
+class InvalidRefreshError(ApiException):
+    status_code = 401
+    type = ApiExceptionType.INVALID_REFRESH
+    message = "Invalid Refresh Token"
 
 class UserAlreadyExistsError(ApiException):
     status_code = 409
