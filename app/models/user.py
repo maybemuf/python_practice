@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from sqlmodel import SQLModel, Field
 
 from app.models.timestamp import TimestampMixin
+from app.utils import validate_password
 
 class UserBase(SQLModel):
     email: EmailStr = Field(index=True, unique=True)
@@ -19,13 +20,7 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain an uppercase letter")
-        if not any(c.islower() for c in v):
-            raise ValueError("Password must contain a lowercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain a digit")
-        return v
+        return validate_password(v)
 
 class UserPublic(UserBase):
     id: uuid.UUID

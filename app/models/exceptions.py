@@ -7,6 +7,8 @@ class ApiExceptionType(str, Enum):
     USER_EXISTS = "user-exists"
     NOT_FOUND = "not-found"
     UNAUTHORIZED = "unauthorized"
+    INVALID_OLD_PASSWORD = "invalid-old-password"
+    NEW_PASSWORD_EQUALS_OLD = "new-password-equals-old"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -66,3 +68,13 @@ class UserNotFoundError(ApiException):
     status_code = 404
     type = ApiExceptionType.NOT_FOUND
     message = "User not found"
+
+class InvalidOldPasswordError(ApiException):
+    status_code = 400
+    type = ApiExceptionType.INVALID_OLD_PASSWORD
+    message = "Incorrect old password"
+
+class NewPasswordEqualsOldError(ApiException):
+    status_code = 400
+    type = ApiExceptionType.NEW_PASSWORD_EQUALS_OLD
+    message = "New password equals old"

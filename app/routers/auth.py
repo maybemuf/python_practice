@@ -8,9 +8,11 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from sqlmodel import select
 from app.dependencies import SessionDep
-from app.models.exceptions import InvalidCredentialsError, InvalidRefreshError, UserAlreadyExistsError
+from app.models.change_password import ChangePasswordBody
+from app.models.exceptions import InvalidCredentialsError, InvalidOldPasswordError, InvalidRefreshError, NewPasswordEqualsOldError, UserAlreadyExistsError
 from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserCreate, AuthResponse
+from app.routers.users import get_current_user
 from app.settings import settings
 import jwt
 
@@ -42,6 +44,15 @@ def create_db_refresh_token(refresh_token: str, user_id: uuid.UUID) -> RefreshTo
         token_hash=token_hashed,
         expires_at= datetime.now(timezone.utc) + timedelta(minutes = settings.REFRESH_TOKEN_EXPIRE_MINUTES)
     )
+
+def revoke_all_refresh_tokens(session: SessionDep, user_id: uuid.UUID):
+    now = datetime.now(timezone.utc)
+    all_tokens_statement = select(RefreshToken).where(RefreshToken.user_id == user_id,  RefreshToken.revoked_at.is_(None))
+    tokens = session.exec(all_tokens_statement)
+    for token_to_revoke in tokens:
+        token_to_revoke.revoked_at = now
+        session.add(token_to_revoke)
+    session.commit()
 
 def get_user_with_email(session: SessionDep, email: str) -> User | None:
     return session.exec(select(User).where(User.email == email)).first()
@@ -90,16 +101,9 @@ def refresh_token(refresh_token: Annotated[str, Body(embed=True)], session: Sess
     if token is None:
         raise InvalidRefreshError()
     elif token.revoked_at is not None:
-        all_tokens_statement = select(RefreshToken).where(RefreshToken.user_id == token.user_id)
-        tokens = session.exec(all_tokens_statement)
-        for token_to_revoke in tokens:
-            token_to_revoke.revoked_at = datetime.now(timezone.utc)
-            session.add(token_to_revoke)
-        session.commit()
+        revoke_all_refresh_tokens(session, token.user_id)
         raise InvalidRefreshError()
     else:
-        # SQLite не зберігає tzinfo — при зчитуванні expires_at приходить naive.
-        # Значення вже в UTC, тож просто домальовуємо ярлик без зсуву часу.
         expires_at = token.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -118,3 +122,21 @@ def refresh_token(refresh_token: Annotated[str, Body(embed=True)], session: Sess
     
     return AuthResponse(access_token=access_token, refresh_token=new_refresh, user=user)
 
+@router.post('/change-password')
+def change_user_password(body: ChangePasswordBody, session: SessionDep, current_user: User = Depends(get_current_user)) -> AuthResponse:
+    user = current_user
+    if not password_hash.verify(body.old_password, user.password_hash):
+        raise InvalidOldPasswordError()
+    elif password_hash.verify(body.new_password, user.password_hash):
+        raise NewPasswordEqualsOldError()
+    user.password_hash = password_hash.hash(body.new_password)
+    refresh_token = generate_refresh_token()
+    db_refresh_token = create_db_refresh_token(refresh_token, user.id)
+    access_token = create_access_token(user.id)
+    session.add(db_refresh_token)
+    session.add(user)
+    revoke_all_refresh_tokens(session, user.id)
+    session.refresh(user)
+
+    return AuthResponse(access_token=access_token, refresh_token=refresh_token, user=user)
+    
