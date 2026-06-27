@@ -82,7 +82,7 @@ def login_user(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], sessi
     return AuthResponse(access_token=token, refresh_token=refresh_token, user=user)
 
 @router.post("/refresh")
-def refresh_token(refresh_token: Annotated[str, Body()], session: SessionDep) -> AuthResponse:
+def refresh_token(refresh_token: Annotated[str, Body(embed=True)], session: SessionDep) -> AuthResponse:
     hashed = hash_refresh_token(refresh_token)
     statement = select(RefreshToken).where(RefreshToken.token_hash == hashed)
     token = session.exec(statement).first()
