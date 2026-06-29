@@ -13,6 +13,7 @@ class UserBase(SQLModel):
 class User(UserBase, TimestampMixin, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     password_hash: str
+    email_verified_at: datetime | None
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
@@ -24,6 +25,7 @@ class UserCreate(UserBase):
 
 class UserPublic(UserBase):
     id: uuid.UUID
+    email_verified_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

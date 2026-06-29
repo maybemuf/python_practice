@@ -9,6 +9,9 @@ class ApiExceptionType(str, Enum):
     UNAUTHORIZED = "unauthorized"
     INVALID_OLD_PASSWORD = "invalid-old-password"
     NEW_PASSWORD_EQUALS_OLD = "new-password-equals-old"
+    OTP_IS_INCORRECT = "otp-is-incorrect"
+    OTP_IS_EXPIRED = "otp-is-expired"
+    TOO_MANY_ATTEMPTS = "too-many-attempts"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -78,3 +81,18 @@ class NewPasswordEqualsOldError(ApiException):
     status_code = 400
     type = ApiExceptionType.NEW_PASSWORD_EQUALS_OLD
     message = "New password equals old"
+
+class OtpIsExpiredError(ApiException):
+    status_code = 400
+    type = ApiExceptionType.OTP_IS_EXPIRED
+    message = "Otp is expired"
+
+class OtpIsIncorrectError(ApiException):
+    status_code = 400
+    type = ApiExceptionType.OTP_IS_INCORRECT
+    message = "Otp is incorrect"
+
+class TooManyAttemptsError(ApiException):
+    status_code = 429
+    type = ApiExceptionType.TOO_MANY_ATTEMPTS
+    message = "Too many attempts, try again later"
