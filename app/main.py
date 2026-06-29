@@ -1,10 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from app.logging import logger
 from app.models.exceptions import ApiException, InternalServerError
 from app.routers import auth, users
-import logging
 
-logger = logging.getLogger("app")
 app = FastAPI()
 
 app.include_router(auth.router)
