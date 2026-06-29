@@ -5,6 +5,8 @@ from app.models.user import (
     UserPublic,
     AuthResponse,
 )
+from app.models.refresh_token import RefreshToken  # registers the table in metadata
+from app.models.otp import OTPRequest, OTPType      # registers the table in metadata
 
 __all__ = [
     "User",
@@ -12,4 +14,7 @@ __all__ = [
     "UserCreate",
     "UserPublic",
     "AuthResponse",
+    "RefreshToken",
+    "OTPRequest",
+    "OTPType",
 ]

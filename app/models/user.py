@@ -1,6 +1,7 @@
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from sqlalchemy import DateTime
 from sqlmodel import SQLModel, Field
 
 from app.models.timestamp import TimestampMixin
@@ -13,7 +14,7 @@ class UserBase(SQLModel):
 class User(UserBase, TimestampMixin, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     password_hash: str
-    email_verified_at: datetime | None = Field(default=None)
+    email_verified_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)

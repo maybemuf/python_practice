@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import Depends
 from sqlmodel import Session, SQLModel, create_engine
 
-connect_args = {"check_same_thread": False}
+# check_same_thread is a SQLite-only option; it must not be passed to other drivers.
+connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
 
 SQLModel.metadata.naming_convention = {
