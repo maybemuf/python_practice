@@ -10,6 +10,7 @@ from sqlmodel import Field
 
 from app.settings import settings
 from app.models.timestamp import TimestampMixin
+from app.utils import ensure_utc
 
 OtpRawCodeStr = Annotated[str, Field(min_length=6, max_length=6, regex=r"^\d{6}$")]
 
@@ -43,5 +44,5 @@ class OTPRequest(TimestampMixin, table=True):
         return hmac.compare_digest(hash_otp(code), self.code_hash)
 
     def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= self.expires_at
+        return datetime.now(timezone.utc) >= ensure_utc(self.expires_at)
  

@@ -17,12 +17,16 @@ from app.models.exceptions import InvalidCredentialsError, InvalidOldPasswordErr
 from app.models.otp import OTPRequest, OTPType, OtpRawCodeStr
 from app.models.refresh_token import RefreshToken
 from app.models.user import User, UserCreate, AuthResponse
-from app.routers.users import get_current_user
 from app.settings import settings
+from app.utils import ensure_utc
 import jwt
 
 password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+# Imported after oauth2_scheme is defined: app.routers.users imports oauth2_scheme
+# from here, so this order breaks the auth <-> users circular import.
+from app.routers.users import get_current_user
 
 router = APIRouter(
     prefix="/auth",
@@ -142,7 +146,7 @@ def rotate_refresh_token(refresh_token: Annotated[str, Body(embed=True)], sessio
         revoke_all_refresh_tokens(session, token.user_id)
         session.commit()
         raise InvalidRefreshError()
-    elif token.expires_at < datetime.now(timezone.utc):
+    elif ensure_utc(token.expires_at) < datetime.now(timezone.utc):
         raise InvalidRefreshError()
 
     token.revoked_at = datetime.now(timezone.utc)
