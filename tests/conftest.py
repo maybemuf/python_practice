@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 from sqlmodel.pool import StaticPool
 
-from app.dependencies import get_session
+from app.dependencies.session import get_session
 from app.main import app
 from app.models.user import User
 from app.routers.auth import create_access_token, password_hash
