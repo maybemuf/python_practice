@@ -12,6 +12,7 @@ class ApiExceptionType(str, Enum):
     OTP_IS_INCORRECT = "otp-is-incorrect"
     OTP_IS_EXPIRED = "otp-is-expired"
     TOO_MANY_ATTEMPTS = "too-many-attempts"
+    EMAIL_IS_UNVERIFIED = "email-is-enverified"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -96,3 +97,8 @@ class TooManyAttemptsError(ApiException):
     status_code = 429
     type = ApiExceptionType.TOO_MANY_ATTEMPTS
     message = "Too many attempts, try again later"
+
+class EmailIsUnverifiedError(ApiException):
+    status_code = 403
+    type = ApiExceptionType.EMAIL_IS_UNVERIFIED
+    message = "Email is unverified, need to verifiy"

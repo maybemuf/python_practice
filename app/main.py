@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from app.logging import logger
 from app.models.exceptions import ApiException, InternalServerError
 from app.routers import auth, users
+from app.dependencies import logger
 
 app = FastAPI()
 

@@ -4,13 +4,13 @@ import uuid
 import hashlib
 from fastapi import APIRouter, Body, Depends
 from datetime import datetime, timedelta, timezone
-from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from pwdlib import PasswordHash
 from pydantic.networks import EmailStr
 from sqlmodel import select
 from app.dependencies import SessionDep
-from app.logging import logger
+from app.dependencies import logger
+from app.dependencies.user import UserDep
 from app.models import UserPublic
 from app.models.change_password import ChangePasswordBody, ResetPasswordBody
 from app.models.exceptions import InvalidCredentialsError, InvalidOldPasswordError, InvalidRefreshError, NewPasswordEqualsOldError, OtpIsExpiredError, OtpIsIncorrectError, UserAlreadyExistsError, UserNotFoundError
@@ -22,11 +22,6 @@ from app.utils import ensure_utc
 import jwt
 
 password_hash = PasswordHash.recommended()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
-
-# Imported after oauth2_scheme is defined: app.routers.users imports oauth2_scheme
-# from here, so this order breaks the auth <-> users circular import.
-from app.routers.users import get_current_user
 
 router = APIRouter(
     prefix="/auth",
@@ -162,7 +157,7 @@ def rotate_refresh_token(refresh_token: Annotated[str, Body(embed=True)], sessio
     return AuthResponse(access_token=access_token, refresh_token=new_refresh, user=user)
 
 @router.post("/change-password")
-def change_user_password(body: ChangePasswordBody, session: SessionDep, current_user: User = Depends(get_current_user)) -> AuthResponse:
+def change_user_password(body: ChangePasswordBody, session: SessionDep, current_user: UserDep) -> AuthResponse:
     user = current_user
     if not password_hash.verify(body.old_password, user.password_hash):
         raise InvalidOldPasswordError()
@@ -216,7 +211,7 @@ def reset_user_password(body: ResetPasswordBody, session: SessionDep) -> AuthRes
     return AuthResponse(access_token=access_token, refresh_token=refresh_token, user=user)
     
 @router.post("/request-verify-email")
-def send_verify_email_otp(session: SessionDep, user: User = Depends(get_current_user)):
+def send_verify_email_otp(session: SessionDep, user: UserDep):
     invalidate_previous_otp_requests(session, otp_type=OTPType.EMAIL_VERIFICATION, user_id=user.id)
     raw_code, otp_request = create_otp_request(otp_type=OTPType.EMAIL_VERIFICATION, user_id=user.id)
     session.add(otp_request)
@@ -224,7 +219,7 @@ def send_verify_email_otp(session: SessionDep, user: User = Depends(get_current_
     logger.debug(f"User({user.id}) wants to verify their email\nOTPCode: {raw_code}")
 
 @router.post("/verify-email")
-def verify_user_email(code: Annotated[OtpRawCodeStr, Body(embed=True)], session: SessionDep, user: User = Depends(get_current_user)) -> UserPublic:
+def verify_user_email(code: Annotated[OtpRawCodeStr, Body(embed=True)], session: SessionDep, user: UserDep) -> UserPublic:
     verify_otp_request(session, user.id, otp_type=OTPType.EMAIL_VERIFICATION, raw_code=code)
 
     user.email_verified_at = datetime.now(timezone.utc)
