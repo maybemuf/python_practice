@@ -5,12 +5,15 @@ import uuid
 from fastapi.responses import JSONResponse, StreamingResponse
 import magic
 from fastapi import APIRouter, Depends, UploadFile
+from sqlalchemy.orm import state
+from sqlmodel import select
 from starlette.status import HTTP_204_NO_CONTENT
 
 from app.dependencies import SessionDep
 from app.dependencies.user import VerifiedUserDep
 from app.models.exceptions import FileMissingError, UnsupportedMediaTypeError
 from app.models.file import FileObject, FilePublic, FileStatus
+from app.models.pagination import PaginationQuerry
 from app.services.storage import storage
 from app.services.storage.metered import MeteredReader
 from app.settings import settings
@@ -104,3 +107,13 @@ async def delete_file(file: UserFileObjDep, session: SessionDep) -> None:
     session.delete(file)
     session.commit()
     await storage.delete(file.storage_key)
+
+@router.get('', response_model=list[FilePublic])
+def get_user_file_objects(pagination: PaginationQuerry, user: VerifiedUserDep, session: SessionDep) -> list[FileObject]:
+    statement = select(FileObject).where(FileObject.owner_id == user.id).offset(pagination.offset).limit(pagination.limit)
+    file_objects = session.exec(statement).all()
+    return file_objects
+
+@router.get('/{file_id}/metadata', response_model=FilePublic)
+def get_user_file_metadata(file: UserFileObjDep) -> FileObject:
+    return file
