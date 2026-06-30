@@ -2,9 +2,10 @@ from typing import Annotated
 from urllib.parse import quote
 import uuid
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import magic
 from fastapi import APIRouter, Depends, UploadFile
+from starlette.status import HTTP_204_NO_CONTENT
 
 from app.dependencies import SessionDep
 from app.dependencies.user import VerifiedUserDep
@@ -98,3 +99,8 @@ async def download_file(file: UserFileObjDep) -> StreamingResponse:
         }
     )
     
+@router.delete('/{file_id}', status_code=HTTP_204_NO_CONTENT)
+async def delete_file(file: UserFileObjDep, session: SessionDep) -> None:
+    session.delete(file)
+    session.commit()
+    await storage.delete(file.storage_key)
