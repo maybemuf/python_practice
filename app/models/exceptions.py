@@ -15,6 +15,8 @@ class ApiExceptionType(str, Enum):
     EMAIL_IS_UNVERIFIED = "email-is-enverified"
     UNSUPPORTED_MEDIA_TYPE = "unsupported-media-type"
     FILE_TOO_LARGE = "file-too-large"
+    FILE_NOT_FOUND = "file-not-found"
+    FILE_ACCESS_DENIED = "file-access-denied"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -114,3 +116,13 @@ class FileTooLargeError(ApiException):
     status_code = 413
     type = ApiExceptionType.FILE_TOO_LARGE
     message = "File is too large"
+
+class FileMissingError(ApiException):
+    status_code = 404
+    type = ApiExceptionType.FILE_NOT_FOUND
+    message = "File not found"
+
+class FileAccessDeniedError(ApiException):
+    status_code = 403
+    type = ApiExceptionType.FILE_ACCESS_DENIED
+    message = "Access to this file is denied"

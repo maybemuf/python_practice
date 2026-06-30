@@ -1,11 +1,12 @@
-from typing import BinaryIO, Protocol
+from typing import AsyncIterator, BinaryIO, Protocol
 
 class Storage(Protocol):
-    async def save(self, key: str, source: BinaryIO, content_type: str) -> None:
-        """Saving the file"""
+    async def save(self, key: str, source: BinaryIO, content_type: str) -> None: ...
 
-    async def delete(self, key: str) -> None:
-        """Deleting the file"""
+    async def open_stream(self, key: str)-> AsyncIterator[bytes]: ...
+
+    async def delete(self, key: str) -> None: ...
+
+    async def exists(self, key: str) -> bool: ...
     
-    def url_for(self, key: str) -> str:
-        """Geting the url for the file"""
+    def url_for(self, key: str) -> str: ...

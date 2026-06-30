@@ -1,11 +1,14 @@
+from typing import Annotated
+from urllib.parse import quote
 import uuid
 
+from fastapi.responses import StreamingResponse
 import magic
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 
 from app.dependencies import SessionDep
 from app.dependencies.user import VerifiedUserDep
-from app.models.exceptions import UnsupportedMediaTypeError
+from app.models.exceptions import FileMissingError, UnsupportedMediaTypeError
 from app.models.file import FileObject, FilePublic, FileStatus
 from app.services.storage import storage
 from app.services.storage.metered import MeteredReader
@@ -28,6 +31,14 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
 }
+
+def get_user_file_obj(file_id: uuid.UUID, session: SessionDep, user: VerifiedUserDep) -> FileObject:
+    file_obj = session.get(FileObject, file_id)
+    if file_obj is None or file_obj.owner_id != user.id:
+        raise FileMissingError()
+    return file_obj
+
+UserFileObjDep = Annotated[FileObject, Depends(get_user_file_obj)]
 
 router = APIRouter(
     prefix="/files",
@@ -72,3 +83,18 @@ async def upload_file(
     session.commit()
     session.refresh(file_obj)
     return file_obj
+
+@router.get('/{file_id}', response_class=StreamingResponse)
+async def download_file(file: UserFileObjDep) -> StreamingResponse:
+    filename = quote(file.original_filename or str(file.id))
+    if not await storage.exists(file.storage_key):
+        raise FileMissingError()
+    return StreamingResponse(
+        storage.open_stream(file.storage_key),
+        media_type=file.content_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "Content-Length": str(file.size_bytes),
+        }
+    )
+    
