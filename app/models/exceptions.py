@@ -13,6 +13,8 @@ class ApiExceptionType(str, Enum):
     OTP_IS_EXPIRED = "otp-is-expired"
     TOO_MANY_ATTEMPTS = "too-many-attempts"
     EMAIL_IS_UNVERIFIED = "email-is-enverified"
+    UNSUPPORTED_MEDIA_TYPE = "unsupported-media-type"
+    FILE_TOO_LARGE = "file-too-large"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -102,3 +104,13 @@ class EmailIsUnverifiedError(ApiException):
     status_code = 403
     type = ApiExceptionType.EMAIL_IS_UNVERIFIED
     message = "Email is unverified, need to verifiy"
+
+class UnsupportedMediaTypeError(ApiException):
+    status_code = 415
+    type = ApiExceptionType.UNSUPPORTED_MEDIA_TYPE
+    message = "Unsupported file type"
+
+class FileTooLargeError(ApiException):
+    status_code = 413
+    type = ApiExceptionType.FILE_TOO_LARGE
+    message = "File is too large"

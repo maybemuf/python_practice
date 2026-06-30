@@ -7,6 +7,7 @@ from app.models.user import (
 )
 from app.models.refresh_token import RefreshToken  # registers the table in metadata
 from app.models.otp import OTPRequest, OTPType      # registers the table in metadata
+from app.models.file import FileObject, FileStatus, FilePublic  # registers the table in metadata
 
 __all__ = [
     "User",
@@ -17,4 +18,7 @@ __all__ = [
     "RefreshToken",
     "OTPRequest",
     "OTPType",
+    "FileObject",
+    "FileStatus",
+    "FilePublic",
 ]

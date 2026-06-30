@@ -1,13 +1,14 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from app.models.exceptions import ApiException, InternalServerError
-from app.routers import auth, users
+from app.routers import auth, users, files
 from app.dependencies import logger
 
 app = FastAPI()
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(files.router)
 
 @app.exception_handler(ApiException)
 def api_exception_handler(request: Request, exception: ApiException):
