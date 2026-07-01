@@ -1,14 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends
 import jwt
+from fastapi import Depends
 
-from app.settings import settings
 from app.dependencies.auth import oauth2_scheme
 from app.dependencies.session import SessionDep
 from app.models import User
-from app.models.exceptions import EmailIsUnverifiedError, UnauthorizedError, UserNotFoundError
+from app.models.exceptions import EmailIsUnverifiedError, UnauthorizedError
+from app.settings import settings
 
 
 def get_current_user(
@@ -22,10 +22,12 @@ def get_current_user(
             raise UnauthorizedError()
         user_uuid = UUID(user_id)
     except (jwt.PyJWTError, ValueError, TypeError):
-        raise UnauthorizedError()
+        raise UnauthorizedError() from None
+    # Signature-valid token, but the user is gone (deleted) → the token is no
+    # longer valid: 401, not 404. The client must re-authenticate.
     user = session.get(User, user_uuid)
     if user is None:
-        raise UserNotFoundError()
+        raise UnauthorizedError()
     return user
 
 UserDep = Annotated[User, Depends(get_current_user)]

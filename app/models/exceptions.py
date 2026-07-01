@@ -1,6 +1,9 @@
-from enum import Enum
+from enum import StrEnum
 
-class ApiExceptionType(str, Enum):
+from pydantic import BaseModel
+
+
+class ApiExceptionType(StrEnum):
     INTERNAL_ERROR = "internal-error"
     INVALID_CREDENTIALS = "invalid-credentials"
     INVALID_REFRESH = "invalid-refresh"
@@ -12,7 +15,8 @@ class ApiExceptionType(str, Enum):
     OTP_IS_INCORRECT = "otp-is-incorrect"
     OTP_IS_EXPIRED = "otp-is-expired"
     TOO_MANY_ATTEMPTS = "too-many-attempts"
-    EMAIL_IS_UNVERIFIED = "email-is-enverified"
+    EMAIL_IS_UNVERIFIED = "email-unverified"
+    VALIDATION_ERROR = "validation-error"
     UNSUPPORTED_MEDIA_TYPE = "unsupported-media-type"
     FILE_TOO_LARGE = "file-too-large"
     FILE_NOT_FOUND = "file-not-found"
@@ -105,7 +109,7 @@ class TooManyAttemptsError(ApiException):
 class EmailIsUnverifiedError(ApiException):
     status_code = 403
     type = ApiExceptionType.EMAIL_IS_UNVERIFIED
-    message = "Email is unverified, need to verifiy"
+    message = "Email is not verified"
 
 class UnsupportedMediaTypeError(ApiException):
     status_code = 415
@@ -126,3 +130,18 @@ class FileAccessDeniedError(ApiException):
     status_code = 403
     type = ApiExceptionType.FILE_ACCESS_DENIED
     message = "Access to this file is denied"
+
+
+class ErrorResponse(BaseModel):
+    """Unified error shape for the client. `type` is a machine-readable code (switch
+    on it, not on message). `body` is optional details (e.g. the field list for 422)."""
+
+    message: str
+    type: ApiExceptionType
+    body: object | None = None
+
+
+def error_responses(*status_codes: int) -> dict[int, dict]:
+    """Helper for the `responses=` route param: documents in OpenAPI/Swagger that
+    these statuses return an ErrorResponse. Example: responses=error_responses(401, 404)."""
+    return {code: {"model": ErrorResponse} for code in status_codes}
