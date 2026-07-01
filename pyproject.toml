@@ -1,7 +1,7 @@
 [project]
 name = "practice"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI REST API with JWT auth, refresh-token rotation, OTP flows and file storage."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,13 +12,33 @@ dependencies = [
     "pwdlib[argon2]>=0.3.0",
     "pydantic-settings>=2.14.2",
     "pyjwt>=2.13.0",
-    "pytest>=9.1.1",
     "python-magic>=0.4.27",
     "python-multipart>=0.0.32",
     "sqlmodel>=0.0.38",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.9.0",
+]
+
 [tool.setuptools]
 packages = ["app"]
 
 [tool.fastapi]
 entrypoint = "app.main:app"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+# автогенеровані міграції не чіпаємо
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+# E/F — pyflakes+pycodestyle, I — isort, UP — pyupgrade, B — bugbear
+select = ["E", "F", "I", "UP", "B"]
+# ловить мертві імпорти на кшталт `from sqlalchemy.orm import state`
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
