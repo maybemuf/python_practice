@@ -17,5 +17,24 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build: .
+    container_name: practice-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # всередині compose-мережі БД доступна за іменем сервісу `db`
+      DATABASE_URL: "postgresql+psycopg://practice:practice@db:5432/practice"
+      JWT_SECRET_KEY: "change-me-in-real-deployments"
+      OTP_PEPPER: "change-me-in-real-deployments"
+    ports:
+      - "8000:8000"
+    # застосовуємо міграції, тоді стартуємо сервер
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run fastapi run app/main.py --host 0.0.0.0 --port 8000"
+
 volumes:
   pgdata:
