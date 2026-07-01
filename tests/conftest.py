@@ -1,7 +1,7 @@
 import os
 
-# Підставляємо тестові env ДО імпорту app/settings — інакше Settings()
-# спробує прочитати .env або впаде через відсутні обовʼязкові поля.
+# Set test env vars BEFORE importing app/settings — otherwise Settings() will
+# try to read .env or fail on the missing required fields.
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-not-for-prod-0123456789")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
@@ -17,13 +17,13 @@ from sqlmodel.pool import StaticPool
 from app.dependencies.session import get_session
 from app.main import app
 from app.models.user import User
-from app.routers.auth import create_access_token, password_hash
+from app.services.auth_service import create_access_token, password_hash
 
 
 @pytest.fixture(name="engine")
 def engine_fixture():
-    """In-memory SQLite на весь прогон. StaticPool тримає одне зʼєднання,
-    щоб :memory:-БД не зникала між викликами в межах тесту."""
+    """In-memory SQLite for the whole run. StaticPool keeps a single connection
+    so the :memory: DB doesn't disappear between calls within a test."""
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -35,16 +35,16 @@ def engine_fixture():
 
 
 @pytest.fixture(name="session")
-def session_fixture(engine) -> Generator[Session, None, None]:
-    """Свіжа сесія на кожен тест. Бо engine function-scoped — таблиці
-    чисті в кожному тесті, повна ізоляція без ручного rollback."""
+def session_fixture(engine) -> Generator[Session]:
+    """A fresh session per test. Since the engine is function-scoped, tables
+    are clean in every test — full isolation without manual rollback."""
     with Session(engine) as session:
         yield session
 
 
 @pytest.fixture(name="client")
-def client_fixture(session: Session) -> Generator[TestClient, None, None]:
-    """TestClient з підміненим get_session: усі роутери ходять у тестову БД."""
+def client_fixture(session: Session) -> Generator[TestClient]:
+    """TestClient with get_session overridden: all routers hit the test DB."""
     def get_session_override():
         yield session
 
@@ -56,8 +56,8 @@ def client_fixture(session: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture(name="test_user")
 def test_user_fixture(session: Session) -> User:
-    """Готовий користувач у БД. Створюємо напряму через хеш пароля,
-    а не через /register — фікстура не має залежати від роуту, який тестуємо."""
+    """A ready-made user in the DB. Created directly via a password hash rather
+    than through /register — the fixture must not depend on the route under test."""
     user = User(
         email="test@example.com",
         username="testuser",
@@ -71,7 +71,7 @@ def test_user_fixture(session: Session) -> User:
 
 @pytest.fixture(name="auth_headers")
 def auth_headers_fixture(test_user: User) -> dict[str, str]:
-    """Валідний Bearer-заголовок для test_user — щоб захищені ендпоінти
-    тестувати без проходження /login у кожному тесті."""
+    """A valid Bearer header for test_user — so protected endpoints can be
+    tested without going through /login in every test."""
     token = create_access_token(test_user.id)
     return {"Authorization": f"Bearer {token}"}

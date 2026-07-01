@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -7,28 +7,27 @@ from sqlmodel import Session
 
 from app.models.file import FileObject, FileStatus
 from app.models.user import User
-from app.routers.auth import create_access_token, password_hash
+from app.services.auth_service import create_access_token, password_hash
 
-
-# --- Інфраструктура ----------------------------------------------------------
+# --- Infrastructure ----------------------------------------------------------
 
 
 class FakeStorage:
-    """In-memory реалізація Storage-протоколу для тестів: жодного диску,
-    усе тримаємо в dict {key: bytes}. Так тести швидкі й ізольовані."""
+    """In-memory implementation of the Storage protocol for tests: no disk,
+    everything kept in a dict {key: bytes}. Keeps tests fast and isolated."""
 
     def __init__(self) -> None:
         self.files: dict[str, bytes] = {}
 
     async def save(self, key: str, source, content_type: str) -> None:
-        # читаємо ЧЕРЕЗ переданий MeteredReader, щоб він порахував size/checksum
+        # read THROUGH the passed MeteredReader so it computes size/checksum
         buf = bytearray()
         while chunk := await source.read(1024 * 1024):
             buf.extend(chunk)
         self.files[key] = bytes(buf)
 
     async def open_stream(self, key: str):
-        yield self.files[key]  # для тесту досить одного шматка
+        yield self.files[key]  # one chunk is enough for the test
 
     async def exists(self, key: str) -> bool:
         return key in self.files
@@ -42,7 +41,7 @@ class FakeStorage:
 
 @pytest.fixture(name="fake_storage")
 def fake_storage_fixture(monkeypatch) -> FakeStorage:
-    """Підміняємо модульний singleton `storage`, який роутер імпортував до себе."""
+    """Patch the module-level singleton `storage` that the router imported."""
     storage = FakeStorage()
     monkeypatch.setattr("app.routers.files.storage", storage)
     return storage
@@ -50,13 +49,13 @@ def fake_storage_fixture(monkeypatch) -> FakeStorage:
 
 @pytest.fixture(name="verified_user")
 def verified_user_fixture(session: Session) -> User:
-    """Верифікований власник файлів — бо файлові ендпоінти за VerifiedUserDep.
-    Conftest-овий test_user НЕ верифікований, тож тут потрібен свій."""
+    """A verified file owner — because file endpoints require VerifiedUserDep.
+    The conftest test_user is NOT verified, so we need our own here."""
     user = User(
         email="owner@example.com",
         username="owner",
         password_hash=password_hash.hash("Password123"),
-        email_verified_at=datetime.now(timezone.utc),
+        email_verified_at=datetime.now(UTC),
     )
     session.add(user)
     session.commit()
@@ -79,8 +78,8 @@ def _seed_file(
     content_type: str = "text/plain",
     store_on_disk: bool = True,
 ) -> FileObject:
-    """Кладе FileObject у БД і (опційно) байти у фейкове сховище.
-    store_on_disk=False симулює розсинхрон БД↔сховище."""
+    """Puts a FileObject into the DB and (optionally) bytes into the fake storage.
+    store_on_disk=False simulates a DB↔storage mismatch."""
     file_id = uuid4()
     key = f"users/{owner_id}/{file_id}.txt"
     if store_on_disk:
@@ -106,7 +105,7 @@ def _other_user(session: Session) -> User:
         email="stranger@example.com",
         username="stranger",
         password_hash=password_hash.hash("Password123"),
-        email_verified_at=datetime.now(timezone.utc),
+        email_verified_at=datetime.now(UTC),
     )
     session.add(user)
     session.commit()
@@ -133,7 +132,7 @@ def test_upload_file_success(
     assert data["content_type"] == "text/plain"
     assert data["size_bytes"] == len(content)
     assert data["status"] == FileStatus.SAVED.value
-    # байти реально потрапили у сховище
+    # bytes actually made it into storage
     assert content in fake_storage.files.values()
 
 
@@ -147,7 +146,7 @@ def test_upload_does_not_leak_internal_fields(
     )
 
     data = response.json()
-    # FilePublic не повинен віддавати внутрішні поля
+    # FilePublic must not expose internal fields
     assert "storage_key" not in data
     assert "owner_id" not in data
     assert "checksum" not in data
@@ -156,7 +155,7 @@ def test_upload_does_not_leak_internal_fields(
 def test_upload_unsupported_type_is_rejected(
     client: TestClient, verified_headers: dict, fake_storage: FakeStorage
 ):
-    # libmagic визначить це як application/octet-stream → не в ALLOWED_CONTENT_TYPES
+    # libmagic detects this as application/octet-stream → not in ALLOWED_CONTENT_TYPES
     binary = bytes(range(256)) * 4
     response = client.post(
         "/files",
@@ -165,13 +164,30 @@ def test_upload_unsupported_type_is_rejected(
     )
 
     assert response.status_code == 415
-    assert fake_storage.files == {}  # нічого не збережено
+    assert fake_storage.files == {}  # nothing was stored
+
+
+def test_upload_too_large_is_rejected_and_cleaned(
+    client: TestClient, verified_headers: dict, fake_storage: FakeStorage, monkeypatch
+):
+    # Shrink the limit to 10 bytes; 200 bytes of text will exceed it.
+    monkeypatch.setattr("app.settings.settings.MAX_UPLOAD_SIZE", 10)
+    response = client.post(
+        "/files",
+        headers=verified_headers,
+        files={"file": ("big.txt", b"a" * 200, "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["type"] == "file-too-large"
+    # the partially written file was cleaned up (except → storage.delete)
+    assert fake_storage.files == {}
 
 
 def test_upload_requires_verified_user(
     client: TestClient, auth_headers: dict, fake_storage: FakeStorage
 ):
-    # auth_headers → conftest-овий test_user, який НЕ верифікований
+    # auth_headers → the conftest test_user, who is NOT verified
     response = client.post(
         "/files",
         headers=auth_headers,
@@ -227,7 +243,7 @@ def test_download_other_users_file_is_404(
 
     response = client.get(f"/files/{file.id}", headers=verified_headers)
 
-    # 404, а не 403 — не підтверджуємо існування чужого файлу
+    # 404, not 403 — we don't confirm the existence of someone else's file
     assert response.status_code == 404
 
 
@@ -246,7 +262,7 @@ def test_download_missing_in_storage_is_404(
     fake_storage: FakeStorage,
     session: Session,
 ):
-    # запис у БД є, а файлу у сховищі нема (розсинхрон) → 404 ще ДО стріму
+    # the DB row exists but the file is missing in storage (mismatch) → 404 BEFORE streaming
     file = _seed_file(session, fake_storage, verified_user.id, store_on_disk=False)
 
     response = client.get(f"/files/{file.id}", headers=verified_headers)
@@ -270,8 +286,8 @@ def test_delete_file_success(
     response = client.delete(f"/files/{file.id}", headers=verified_headers)
 
     assert response.status_code == 204
-    assert session.get(FileObject, file.id) is None  # зник з БД
-    assert key not in fake_storage.files  # зник зі сховища
+    assert session.get(FileObject, file.id) is None  # gone from the DB
+    assert key not in fake_storage.files  # gone from storage
 
 
 def test_delete_other_users_file_is_404(
@@ -286,7 +302,7 @@ def test_delete_other_users_file_is_404(
     response = client.delete(f"/files/{file.id}", headers=verified_headers)
 
     assert response.status_code == 404
-    # чужий файл не зачеплено
+    # someone else's file is untouched
     assert session.get(FileObject, file.id) is not None
     assert file.storage_key in fake_storage.files
 

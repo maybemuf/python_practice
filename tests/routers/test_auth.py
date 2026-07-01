@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import jwt
@@ -6,11 +6,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from app.models.exceptions import OtpIsExpiredError, OtpIsIncorrectError
-from app.models.otp import OTPRequest, OTPType, hash_otp
+from app.models.exceptions import (
+    OtpIsExpiredError,
+    OtpIsIncorrectError,
+    TooManyAttemptsError,
+)
+from app.models.otp import MAX_OTP_ATTEMPTS, OTPRequest, OTPType, hash_otp
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.routers.auth import (
+from app.services.auth_service import (
     authenticate_user,
     create_access_token,
     create_db_refresh_token,
@@ -63,7 +67,7 @@ def test_register_hashes_password(client: TestClient, session: Session):
     client.post("/auth/register", json=VALID_BODY)
 
     user = session.exec(select(User).where(User.email == "new@example.com")).first()
-    # Пароль не зберігається у відкритому вигляді, і хеш валідний.
+    # The password is not stored in plaintext, and the hash is valid.
     assert user.password_hash != "Password123"
     assert password_hash.verify("Password123", user.password_hash)
 
@@ -83,7 +87,7 @@ def test_register_token_subject_matches_user(client: TestClient):
 
 
 def test_register_duplicate_email_conflict(client: TestClient, test_user: User):
-    # test_user вже сидить у БД з email test@example.com.
+    # test_user already sits in the DB with email test@example.com.
     body = {**VALID_BODY, "email": "test@example.com"}
     response = client.post("/auth/register", json=body)
 
@@ -94,10 +98,10 @@ def test_register_duplicate_email_conflict(client: TestClient, test_user: User):
 @pytest.mark.parametrize(
     "password",
     [
-        "Short1",          # < 8 символів
-        "password123",     # немає великої літери
-        "PASSWORD123",     # немає малої літери
-        "PasswordABC",     # немає цифри
+        "Short1",          # < 8 characters
+        "password123",     # no uppercase letter
+        "PASSWORD123",     # no lowercase letter
+        "PasswordABC",     # no digit
     ],
 )
 def test_register_weak_password_rejected(client: TestClient, password: str):
@@ -128,8 +132,19 @@ def test_register_missing_fields_rejected(client: TestClient):
     assert response.status_code == 422
 
 
+def test_validation_error_uses_unified_shape(client: TestClient):
+    # 422 is normalized to the unified shape {message, type, body}, not the default {detail}.
+    response = client.post("/auth/register", json={"email": "x@example.com"})
+
+    data = response.json()
+    assert data["type"] == "validation-error"
+    assert "message" in data
+    assert isinstance(data["body"], list)  # field-level details
+    assert "detail" not in data
+
+
 # ---------------------------------------------------------------------------
-# POST /auth/login   (OAuth2PasswordRequestForm -> form-data, не JSON!)
+# POST /auth/login   (OAuth2PasswordRequestForm -> form-data, not JSON!)
 # ---------------------------------------------------------------------------
 
 
@@ -161,7 +176,7 @@ def test_login_unknown_email(client: TestClient):
         data={"username": "nobody@example.com", "password": "Password123"},
     )
 
-    # Та сама помилка, що й при невірному паролі — без user enumeration.
+    # Same error as a wrong password — no user enumeration.
     assert response.status_code == 401
     assert response.json()["type"] == "invalid-credentials"
 
@@ -173,7 +188,7 @@ def test_login_missing_fields(client: TestClient):
 
 
 # ---------------------------------------------------------------------------
-# Хелпери (unit-рівень)
+# Helpers (unit level)
 # ---------------------------------------------------------------------------
 
 
@@ -188,8 +203,8 @@ def test_create_access_token_roundtrip():
 def test_create_access_token_expiry_in_future():
     exp = _decode(create_access_token(uuid4()))["exp"]
 
-    expected = datetime.now(timezone.utc).timestamp() + settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    assert abs(exp - expected) < 10  # допуск кілька секунд на час виконання
+    expected = datetime.now(UTC).timestamp() + settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    assert abs(exp - expected) < 10  # a few seconds of tolerance for execution time
 
 
 def test_authenticate_user_valid(session: Session, test_user: User):
@@ -214,7 +229,7 @@ def test_get_user_with_email(session: Session, test_user: User):
 def test_password_hash_salting():
     h1 = password_hash.hash("Password123")
     h2 = password_hash.hash("Password123")
-    assert h1 != h2  # різна сіль
+    assert h1 != h2  # different salt
     assert password_hash.verify("Password123", h1)
     assert not password_hash.verify("WrongPass123", h1)
 
@@ -225,7 +240,7 @@ def test_password_hash_salting():
 
 
 def _register(client: TestClient) -> dict:
-    """Реєструє користувача й повертає тіло відповіді (з access+refresh)."""
+    """Registers a user and returns the response body (with access + refresh)."""
     return client.post("/auth/register", json=VALID_BODY).json()
 
 
@@ -236,13 +251,13 @@ def _seed_token(
     expires_in_minutes: int = 60,
     revoked: bool = False,
 ) -> str:
-    """Кладе рядок RefreshToken для юзера й повертає plaintext-токен.
-    Дозволяє зібрати протухлий/відкликаний стан, який важко відтворити через API."""
+    """Inserts a RefreshToken row for the user and returns the plaintext token.
+    Lets us build an expired/revoked state that's hard to reproduce via the API."""
     raw = generate_refresh_token()
     row = create_db_refresh_token(raw, user_id)
-    row.expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_in_minutes)
+    row.expires_at = datetime.now(UTC) + timedelta(minutes=expires_in_minutes)
     if revoked:
-        row.revoked_at = datetime.now(timezone.utc)
+        row.revoked_at = datetime.now(UTC)
     session.add(row)
     session.commit()
     return raw
@@ -262,7 +277,7 @@ def test_login_returns_refresh_token(client: TestClient, test_user: User):
 
 
 def test_login_issues_independent_refresh_tokens(client: TestClient, test_user: User):
-    # Кожен логін — окрема сесія: токени різні (мульти-девайс).
+    # Each login is a separate session: tokens differ (multi-device).
     creds = {"username": "test@example.com", "password": "Password123"}
     first = client.post("/auth/login", data=creds).json()["refresh_token"]
     second = client.post("/auth/login", data=creds).json()["refresh_token"]
@@ -286,7 +301,7 @@ def test_refresh_rotates_token(client: TestClient):
 
     new = client.post("/auth/refresh", json={"refresh_token": old}).json()["refresh_token"]
 
-    assert new != old  # ротація: новий токен не дорівнює старому
+    assert new != old  # rotation: the new token differs from the old one
 
 
 def test_refresh_new_access_token_valid(client: TestClient):
@@ -302,7 +317,7 @@ def test_refresh_new_access_token_valid(client: TestClient):
 
 def test_refresh_old_token_rejected_after_rotation(client: TestClient):
     old = _register(client)["refresh_token"]
-    client.post("/auth/refresh", json={"refresh_token": old})  # ротація відкликає old
+    client.post("/auth/refresh", json={"refresh_token": old})  # rotation revokes old
 
     response = client.post("/auth/refresh", json={"refresh_token": old})
 
@@ -311,16 +326,16 @@ def test_refresh_old_token_rejected_after_rotation(client: TestClient):
 
 
 def test_refresh_reuse_revokes_all_user_tokens(client: TestClient):
-    # Детект крадіжки: повторне використання відкликаного токена гасить
-    # ВСІ токени юзера, включно зі свіжо-виданим.
+    # Theft detection: reusing a revoked token revokes ALL of the user's tokens,
+    # including the freshly issued one.
     old = _register(client)["refresh_token"]
     new = client.post("/auth/refresh", json={"refresh_token": old}).json()["refresh_token"]
 
-    # Зловмисник повторно шле вкрадений старий токен.
+    # The attacker resends the stolen old token.
     reuse = client.post("/auth/refresh", json={"refresh_token": old})
     assert reuse.status_code == 401
 
-    # Після цього навіть валідний новий токен має бути мертвий.
+    # After that even the valid new token must be dead.
     after = client.post("/auth/refresh", json={"refresh_token": new})
     assert after.status_code == 401
     assert after.json()["type"] == "invalid-refresh"
@@ -334,7 +349,7 @@ def test_refresh_invalid_token_rejected(client: TestClient):
 
 
 def test_refresh_unknown_wellformed_token_rejected(client: TestClient):
-    # Правильний за форматом, але відсутній у БД токен.
+    # A well-formed token that's absent from the DB.
     response = client.post(
         "/auth/refresh", json={"refresh_token": generate_refresh_token()}
     )
@@ -383,7 +398,7 @@ def test_refresh_persists_rotated_state(
     rows = session.exec(
         select(RefreshToken).where(RefreshToken.user_id == user_id)
     ).all()
-    # Два рядки: старий (відкликаний) і новий (живий).
+    # Two rows: the old one (revoked) and the new one (live).
     assert len(rows) == 2
     old_row = next(r for r in rows if r.token_hash == hash_refresh_token(old_raw))
     new_row = next(r for r in rows if r.token_hash != hash_refresh_token(old_raw))
@@ -400,11 +415,11 @@ def test_refresh_token_stored_as_hash_not_plaintext(
         select(RefreshToken).where(RefreshToken.token_hash == hash_refresh_token(raw))
     ).first()
     assert row is not None
-    assert row.token_hash != raw  # сам токен у БД не лежить
+    assert row.token_hash != raw  # the token itself is not stored in the DB
 
 
 # ---------------------------------------------------------------------------
-# Хелпери refresh (unit-рівень)
+# Refresh helpers (unit level)
 # ---------------------------------------------------------------------------
 
 
@@ -419,11 +434,11 @@ def test_hash_refresh_token_differs_per_input():
 
 def test_generate_refresh_token_unique():
     tokens = {generate_refresh_token() for _ in range(100)}
-    assert len(tokens) == 100  # криптовипадкові — колізій немає
+    assert len(tokens) == 100  # cryptographically random — no collisions
 
 
 # ---------------------------------------------------------------------------
-# OTP helpers (спільні для reset-password / verify-email)
+# OTP helpers (shared by reset-password / verify-email)
 # ---------------------------------------------------------------------------
 
 
@@ -434,23 +449,23 @@ def _seed_otp(
     *,
     expires_in_minutes: int = 10,
 ) -> str:
-    """Кладе OTPRequest у БД й повертає plaintext-код (6 цифр).
-    Код через API не повертається (лише логується), тож для flow-тестів
-    сидимо OTP напряму — так само, як _seed_token для refresh."""
+    """Inserts an OTPRequest into the DB and returns the plaintext code (6 digits).
+    The code is not returned via the API (only logged), so for flow tests we seed
+    the OTP directly — same as _seed_token for refresh."""
     raw, otp = create_otp_request(otp_type=otp_type, user_id=user_id)
-    otp.expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_in_minutes)
+    otp.expires_at = datetime.now(UTC) + timedelta(minutes=expires_in_minutes)
     session.add(otp)
     session.commit()
     return raw
 
 
 def _wrong_code(code: str) -> str:
-    """Інший валідний за форматом код (щоб ловити 400, а не 422)."""
+    """A different well-formed code (so we catch a 400, not a 422)."""
     return "000000" if code != "000000" else "111111"
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/change-password   (потрібен Bearer)
+# POST /auth/change-password   (Bearer required)
 # ---------------------------------------------------------------------------
 
 
@@ -523,7 +538,7 @@ def test_change_password_requires_auth(client: TestClient):
 
 
 def test_change_password_new_refresh_token_valid(client: TestClient, auth_headers: dict):
-    # Регресія: свіжо-виданий refresh не має бути відкликаний разом зі старими.
+    # Regression: the freshly issued refresh must not be revoked along with the old ones.
     new_refresh = client.post(
         "/auth/change-password",
         headers=auth_headers,
@@ -551,7 +566,7 @@ def test_change_password_revokes_existing_refresh_tokens(
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/request-reset-password   (anti-enumeration: завжди 200)
+# POST /auth/request-reset-password   (anti-enumeration: always 200)
 # ---------------------------------------------------------------------------
 
 
@@ -590,7 +605,7 @@ def test_request_reset_password_existing_creates_otp(
 def test_request_reset_password_same_message_regardless_of_user(
     client: TestClient, test_user: User
 ):
-    # Відповідь для існуючого й неіснуючого email має бути ідентичною.
+    # The response for an existing and a non-existent email must be identical.
     known = client.post(
         "/auth/request-reset-password", json={"email": "test@example.com"}
     ).json()
@@ -611,7 +626,7 @@ def test_request_reset_password_invalidates_previous(
     ).all()
     active = [o for o in otps if o.invalidated_at is None and o.consumed_at is None]
     assert len(otps) == 2
-    assert len(active) == 1  # лише останній код лишається активним
+    assert len(active) == 1  # only the latest code stays active
 
 
 def test_request_reset_password_invalid_email_rejected(client: TestClient):
@@ -691,7 +706,7 @@ def test_reset_password_expired_code(
 
 
 def test_reset_password_unknown_email(client: TestClient):
-    # Без enumeration: неіснуючий email дає те саме, що й невірний код.
+    # No enumeration: a non-existent email gives the same result as a wrong code.
     response = client.post(
         "/auth/reset-password",
         json={"email": "ghost@example.com", "raw_code": "123456", "new_password": "NewPassword123"},
@@ -708,7 +723,7 @@ def test_reset_password_consumes_code(
     body = {"email": "test@example.com", "raw_code": code, "new_password": "NewPassword123"}
 
     assert client.post("/auth/reset-password", json=body).status_code == 200
-    # Повторне використання того ж коду — код уже спожитий.
+    # Reusing the same code — the code is already consumed.
     second = client.post("/auth/reset-password", json=body)
     assert second.status_code == 400
     assert second.json()["type"] == "otp-is-incorrect"
@@ -752,7 +767,7 @@ def test_reset_password_revokes_existing_refresh_tokens(
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/request-verify-email   (потрібен Bearer)
+# POST /auth/request-verify-email   (Bearer required)
 # ---------------------------------------------------------------------------
 
 
@@ -775,7 +790,7 @@ def test_request_verify_email_requires_auth(client: TestClient):
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/verify-email   (потрібен Bearer)
+# POST /auth/verify-email   (Bearer required)
 # ---------------------------------------------------------------------------
 
 
@@ -821,7 +836,7 @@ def test_verify_email_expired_code(
 def test_verify_email_rejects_password_recovery_otp(
     client: TestClient, session: Session, test_user: User, auth_headers: dict
 ):
-    # Регресія: код типу PASSWORD_RECOVERY не має проходити верифікацію email.
+    # Regression: a PASSWORD_RECOVERY code must not pass email verification.
     code = _seed_otp(session, test_user.id, OTPType.PASSWORD_RECOVERY)
 
     response = client.post(
@@ -840,7 +855,7 @@ def test_verify_email_consumes_code(
     assert client.post(
         "/auth/verify-email", headers=auth_headers, json={"code": code}
     ).status_code == 200
-    # Повторне використання того ж коду — він спожитий.
+    # Reusing the same code — it is consumed.
     second = client.post("/auth/verify-email", headers=auth_headers, json={"code": code})
     assert second.status_code == 400
 
@@ -851,7 +866,7 @@ def test_verify_email_requires_auth(client: TestClient):
 
 
 # ---------------------------------------------------------------------------
-# OTP-хелпери (unit-рівень)
+# OTP helpers (unit level)
 # ---------------------------------------------------------------------------
 
 
@@ -873,7 +888,7 @@ def test_create_otp_request_format():
     assert len(raw) == 6 and raw.isdigit()
     assert otp.code_hash == hash_otp(raw)
     assert otp.otp_type == OTPType.PASSWORD_RECOVERY
-    assert otp.expires_at > datetime.now(timezone.utc)
+    assert otp.expires_at > datetime.now(UTC)
 
 
 def test_otp_request_verify_matches():
@@ -887,7 +902,7 @@ def test_otp_request_is_expired():
     _, otp = create_otp_request(otp_type=OTPType.EMAIL_VERIFICATION, user_id=uuid4())
     assert otp.is_expired() is False
 
-    otp.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    otp.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     assert otp.is_expired() is True
 
 
@@ -930,7 +945,7 @@ def test_verify_otp_request_expired_raises(session: Session, test_user: User):
 
 
 def test_verify_otp_request_type_mismatch_raises(session: Session, test_user: User):
-    # Код виданий під email-верифікацію, а перевіряємо як password-recovery.
+    # The code was issued for email verification but we check it as password-recovery.
     code = _seed_otp(session, test_user.id, OTPType.EMAIL_VERIFICATION)
 
     with pytest.raises(OtpIsIncorrectError):
@@ -951,3 +966,59 @@ def test_invalidate_previous_otp_requests(session: Session, test_user: User):
         select(OTPRequest).where(OTPRequest.user_id == test_user.id)
     ).first()
     assert otp.invalidated_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting OTP (anti-bruteforce) — MAX_OTP_ATTEMPTS
+# ---------------------------------------------------------------------------
+
+
+def test_verify_otp_counts_failed_attempts(session: Session, test_user: User):
+    code = _seed_otp(session, test_user.id, OTPType.PASSWORD_RECOVERY)
+
+    with pytest.raises(OtpIsIncorrectError):
+        verify_otp_request(
+            session, test_user.id, OTPType.PASSWORD_RECOVERY, raw_code=_wrong_code(code)
+        )
+
+    otp = session.exec(
+        select(OTPRequest).where(OTPRequest.user_id == test_user.id)
+    ).first()
+    assert otp.attempts == 1  # the failed attempt persists even after the exception
+
+
+def test_verify_otp_locks_after_max_attempts(session: Session, test_user: User):
+    code = _seed_otp(session, test_user.id, OTPType.PASSWORD_RECOVERY)
+
+    # Exhaust the limit with failed attempts.
+    for _ in range(MAX_OTP_ATTEMPTS):
+        with pytest.raises(OtpIsIncorrectError):
+            verify_otp_request(
+                session, test_user.id, OTPType.PASSWORD_RECOVERY, raw_code=_wrong_code(code)
+            )
+
+    # The next attempt — even with the CORRECT code — is blocked.
+    with pytest.raises(TooManyAttemptsError):
+        verify_otp_request(session, test_user.id, OTPType.PASSWORD_RECOVERY, raw_code=code)
+
+    otp = session.exec(
+        select(OTPRequest).where(OTPRequest.user_id == test_user.id)
+    ).first()
+    assert otp.invalidated_at is not None  # the code was killed
+
+
+def test_verify_email_too_many_attempts_returns_429(
+    client: TestClient, session: Session, test_user: User, auth_headers: dict
+):
+    code = _seed_otp(session, test_user.id, OTPType.EMAIL_VERIFICATION)
+    wrong = _wrong_code(code)
+
+    for _ in range(MAX_OTP_ATTEMPTS):
+        assert client.post(
+            "/auth/verify-email", headers=auth_headers, json={"code": wrong}
+        ).status_code == 400
+
+    # Limit reached → 429, and the correct code no longer helps.
+    response = client.post("/auth/verify-email", headers=auth_headers, json={"code": code})
+    assert response.status_code == 429
+    assert response.json()["type"] == "too-many-attempts"

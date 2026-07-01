@@ -4,12 +4,12 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.models.user import User
-from app.routers.auth import create_access_token
+from app.services.auth_service import create_access_token
 
 
-# 1. Успішний сценарій: валідний токен → дані користувача.
-#    Просимо `client` (HTTP) і `auth_headers` (Bearer для test_user).
-#    test_user створюється автоматично, бо auth_headers від нього залежить.
+# 1. Happy path: a valid token → the user's data.
+#    We request `client` (HTTP) and `auth_headers` (Bearer for test_user).
+#    test_user is created automatically because auth_headers depends on it.
 def test_read_me_returns_current_user(client: TestClient, auth_headers: dict):
     response = client.get("/users/me", headers=auth_headers)
 
@@ -19,22 +19,22 @@ def test_read_me_returns_current_user(client: TestClient, auth_headers: dict):
     assert data["username"] == "testuser"
 
 
-# 2. Перевірка безпеки: response_model=UserPublic не має віддавати хеш пароля.
+# 2. Security check: response_model=UserPublic must not expose the password hash.
 def test_read_me_does_not_leak_password_hash(client: TestClient, auth_headers: dict):
     response = client.get("/users/me", headers=auth_headers)
 
     assert "password_hash" not in response.json()
 
 
-# 3. Без заголовка Authorization → 401 (спрацьовує oauth2_scheme).
-#    Тут НЕ потрібен ні test_user, ні auth_headers — лише client.
+# 3. Without an Authorization header → 401 (oauth2_scheme kicks in).
+#    Neither test_user nor auth_headers is needed here — just client.
 def test_read_me_without_token_is_unauthorized(client: TestClient):
     response = client.get("/users/me")
 
     assert response.status_code == 401
 
 
-# 4. Зіпсований/підроблений токен → UnauthorizedError (401).
+# 4. Corrupted/forged token → UnauthorizedError (401).
 def test_read_me_with_invalid_token(client: TestClient):
     response = client.get(
         "/users/me",
@@ -44,8 +44,9 @@ def test_read_me_with_invalid_token(client: TestClient):
     assert response.status_code == 401
 
 
-# 5. Валідний токен, але користувача в БД немає → UserNotFoundError (404).
-#    Тут НЕ беремо test_user: робимо токен для випадкового UUID вручну.
+# 5. Signature-valid token, but the user is not in the DB (deleted) → 401.
+#    The token is no longer valid; the client must re-authenticate.
+#    We don't use test_user here: we mint a token for a random UUID by hand.
 def test_read_me_for_missing_user(client: TestClient):
     token = create_access_token(uuid4())
     response = client.get(
@@ -53,13 +54,13 @@ def test_read_me_for_missing_user(client: TestClient):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 401
 
 
-# 6. Приклад використання `session` напряму: перевірити стан БД,
-#    а не лише HTTP-відповідь. Тут створюємо свого користувача в тесті.
+# 6. Example of using `session` directly: assert DB state, not just the HTTP
+#    response. Here we create our own user inside the test.
 def test_read_me_reads_the_right_user(client: TestClient, session: Session):
-    from app.routers.auth import password_hash
+    from app.services.auth_service import password_hash
 
     user = User(
         email="alice@example.com",
