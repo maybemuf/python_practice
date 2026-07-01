@@ -1,19 +1,22 @@
+import uuid
 from typing import Annotated
 from urllib.parse import quote
-import uuid
 
-from fastapi.responses import JSONResponse, StreamingResponse
 import magic
 from fastapi import APIRouter, Depends, UploadFile
-from sqlalchemy.orm import state
+from fastapi.responses import StreamingResponse
 from sqlmodel import select
 from starlette.status import HTTP_204_NO_CONTENT
 
 from app.dependencies import SessionDep
 from app.dependencies.user import VerifiedUserDep
-from app.models.exceptions import FileMissingError, UnsupportedMediaTypeError
+from app.models.exceptions import (
+    FileMissingError,
+    UnsupportedMediaTypeError,
+    error_responses,
+)
 from app.models.file import FileObject, FilePublic, FileStatus
-from app.models.pagination import PaginationQuerry
+from app.models.pagination import PaginationQuery
 from app.services.storage import storage
 from app.services.storage.metered import MeteredReader
 from app.settings import settings
@@ -49,12 +52,14 @@ router = APIRouter(
     tags=["files"],
 )
 
-@router.post("", response_model=FilePublic)
+@router.post("", response_model=FilePublic, responses=error_responses(401, 403, 413, 415))
 async def upload_file(
     file: UploadFile,
     user: VerifiedUserDep,
     session: SessionDep,
 ) -> FileObject:
+    """Uploads a file. The type is detected from magic bytes (not the client's
+    Content-Type); the size is capped by MAX_UPLOAD_SIZE (413 when exceeded)."""
     header = await file.read(2048)
     content_type = mime.from_buffer(header)
     await file.seek(0)
@@ -88,35 +93,63 @@ async def upload_file(
     session.refresh(file_obj)
     return file_obj
 
-@router.get('/{file_id}', response_class=StreamingResponse)
+@router.get(
+    '/{file_id}',
+    response_class=StreamingResponse,
+    responses=error_responses(401, 403, 404),
+)
 async def download_file(file: UserFileObjDep) -> StreamingResponse:
-    filename = quote(file.original_filename or str(file.id))
+    """Streams the file's content. Owner only; someone else's/nonexistent → 404."""
     if not await storage.exists(file.storage_key):
         raise FileMissingError()
+    # Derive the ASCII-safe fallback name from the ext in storage_key
+    # ("users/<id>/<uuid>.<ext>"); the full UTF-8 name goes via filename* (RFC 5987).
+    ext = file.storage_key.rsplit(".", 1)[-1]
+    utf8_name = quote(file.original_filename or f"{file.id}.{ext}")
     return StreamingResponse(
         storage.open_stream(file.storage_key),
         media_type=file.content_type,
         headers={
             "Content-Disposition": (
-                f'attachment; filename="{file.id}.{file.content_type}"; '
-                f"filename*=UTF-8''{filename}"
+                f'attachment; filename="{file.id}.{ext}"; '
+                f"filename*=UTF-8''{utf8_name}"
             ),
             "Content-Length": str(file.size_bytes),
         }
     )
     
-@router.delete('/{file_id}', status_code=HTTP_204_NO_CONTENT)
+@router.delete(
+    '/{file_id}',
+    status_code=HTTP_204_NO_CONTENT,
+    responses=error_responses(401, 403, 404),
+)
 async def delete_file(file: UserFileObjDep, session: SessionDep) -> None:
+    """Deletes the file (DB row + bytes in storage). Owner only."""
     session.delete(file)
     session.commit()
     await storage.delete(file.storage_key)
 
-@router.get('', response_model=list[FilePublic])
-def get_user_file_objects(pagination: PaginationQuerry, user: VerifiedUserDep, session: SessionDep) -> list[FileObject]:
-    statement = select(FileObject).where(FileObject.owner_id == user.id).offset(pagination.offset).limit(pagination.limit)
+@router.get('', response_model=list[FilePublic], responses=error_responses(401, 403))
+def get_user_file_objects(
+    pagination: PaginationQuery,
+    user: VerifiedUserDep,
+    session: SessionDep,
+) -> list[FileObject]:
+    """List of the current user's files with pagination (limit/offset)."""
+    statement = (
+        select(FileObject)
+        .where(FileObject.owner_id == user.id)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+    )
     file_objects = session.exec(statement).all()
     return file_objects
 
-@router.get('/{file_id}/metadata', response_model=FilePublic)
+@router.get(
+    '/{file_id}/metadata',
+    response_model=FilePublic,
+    responses=error_responses(401, 403, 404),
+)
 def get_user_file_metadata(file: UserFileObjDep) -> FileObject:
+    """File metadata without downloading the content. Owner only."""
     return file

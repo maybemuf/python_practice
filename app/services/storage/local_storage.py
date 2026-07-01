@@ -1,9 +1,11 @@
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
+
 import aiofiles
 import aiofiles.os
 
 from app.models.exceptions import FileMissingError
+
 
 class LocalStorage:
     def __init__(self, base_dir: str):
@@ -19,7 +21,7 @@ class LocalStorage:
         path = self._path(key)
         await aiofiles.os.makedirs(path.parent, exist_ok=True)
         async with aiofiles.open(path, "wb") as f:
-            while chunk := await source.read(1024 * 1024):   # стрімінг по 1 МБ
+            while chunk := await source.read(1024 * 1024):   # stream in 1 MB chunks
                 await f.write(chunk)
 
     async def open_stream(self, key: str) -> AsyncIterator[bytes]:
