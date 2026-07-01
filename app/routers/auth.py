@@ -109,9 +109,10 @@ def register_user(body: UserCreate, session: SessionDep) -> AuthResponse:
         raise UserAlreadyExistsError()
     hashed_pass = password_hash.hash(body.password)
     db_user = User.model_validate(body, update={"password_hash": hashed_pass})
+    session.add(db_user)
+    session.flush()  # гарантуємо, що рядок user існує до вставки FK-залежного токена
     refresh_token = generate_refresh_token()
     db_refresh_token = create_db_refresh_token(refresh_token, db_user.id)
-    session.add(db_user)
     session.add(db_refresh_token)
     session.commit()
     token = create_access_token(db_user.id)

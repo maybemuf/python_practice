@@ -97,7 +97,10 @@ async def download_file(file: UserFileObjDep) -> StreamingResponse:
         storage.open_stream(file.storage_key),
         media_type=file.content_type,
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "Content-Disposition": (
+                f'attachment; filename="{file.id}.{file.content_type}"; '
+                f"filename*=UTF-8''{filename}"
+            ),
             "Content-Length": str(file.size_bytes),
         }
     )
