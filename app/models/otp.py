@@ -1,23 +1,30 @@
-from datetime import datetime, timedelta, timezone
-from enum import Enum
 import hashlib
 import hmac
-from typing import Annotated
 import uuid
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Annotated
 
+from pydantic import StringConstraints
 from sqlalchemy import DateTime
 from sqlmodel import Field
 
-from app.settings import settings
 from app.models.timestamp import TimestampMixin
+from app.settings import settings
 from app.utils import ensure_utc
 
-OtpRawCodeStr = Annotated[str, Field(min_length=6, max_length=6, regex=r"^\d{6}$")]
+# Constraint for a request-body string (not a DB column) — hence Pydantic
+# StringConstraints, not sqlmodel.Field. Exactly 6 digits.
+OtpRawCodeStr = Annotated[str, StringConstraints(min_length=6, max_length=6, pattern=r"^\d{6}$")]
+
+# How many failed attempts are allowed per code before it gets blocked.
+# Protection against brute-forcing a 6-digit code (1_000_000 combinations).
+MAX_OTP_ATTEMPTS = 5
 
 def hash_otp(raw_code: str) -> str:
     return hmac.new(settings.OTP_PEPPER.encode(), raw_code.encode(), hashlib.sha256).hexdigest()
 
-class OTPType(str, Enum):
+class OTPType(StrEnum):
     EMAIL_VERIFICATION = "email-verification"
     PASSWORD_RECOVERY = "password-recovery"
 
@@ -29,10 +36,17 @@ class OTPRequest(TimestampMixin, table=True):
     expires_at: datetime = Field(sa_type=DateTime(timezone=True), nullable=False)
     consumed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
     invalidated_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    attempts: int = Field(default=0, nullable=False)
 
     @classmethod
-    def issue(cls, raw_code: OtpRawCodeStr, user_id: uuid.UUID, otp_type: OTPType, ttl: timedelta = timedelta(minutes=10)) -> "OTPRequest":
-        now = datetime.now(timezone.utc)
+    def issue(
+        cls,
+        raw_code: OtpRawCodeStr,
+        user_id: uuid.UUID,
+        otp_type: OTPType,
+        ttl: timedelta = timedelta(minutes=10),
+    ) -> "OTPRequest":
+        now = datetime.now(UTC)
         return cls(
             user_id = user_id,
             code_hash = hash_otp(raw_code),
@@ -44,5 +58,5 @@ class OTPRequest(TimestampMixin, table=True):
         return hmac.compare_digest(hash_otp(code), self.code_hash)
 
     def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) >= ensure_utc(self.expires_at)
+        return datetime.now(UTC) >= ensure_utc(self.expires_at)
  
