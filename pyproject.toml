@@ -32,13 +32,13 @@ entrypoint = "app.main:app"
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-# автогенеровані міграції не чіпаємо
+# leave auto-generated migrations alone
 extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 # E/F — pyflakes+pycodestyle, I — isort, UP — pyupgrade, B — bugbear
 select = ["E", "F", "I", "UP", "B"]
-# ловить мертві імпорти на кшталт `from sqlalchemy.orm import state`
+# catches dead imports such as `from sqlalchemy.orm import state`
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

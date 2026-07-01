@@ -25,13 +25,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      # всередині compose-мережі БД доступна за іменем сервісу `db`
+      # inside the compose network the DB is reachable by the service name `db`
       DATABASE_URL: "postgresql+psycopg://practice:practice@db:5432/practice"
       JWT_SECRET_KEY: "change-me-in-real-deployments"
       OTP_PEPPER: "change-me-in-real-deployments"
     ports:
       - "8000:8000"
-    # застосовуємо міграції, тоді стартуємо сервер
+    # apply migrations, then start the server
     command: >
       sh -c "uv run alembic upgrade head &&
              uv run fastapi run app/main.py --host 0.0.0.0 --port 8000"

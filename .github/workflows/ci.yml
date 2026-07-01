@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # libmagic — потрібен python-magic (визначення типу файлу по байтах)
+      # libmagic — required by python-magic (detecting file type from bytes)
       - name: Install libmagic
         run: sudo apt-get update && sudo apt-get install -y libmagic1
 
@@ -25,5 +25,5 @@ jobs:
         run: uv run ruff check .
 
       - name: Tests (pytest)
-        # тести ходять в in-memory SQLite (див. conftest), окремий Postgres не потрібен
+        # tests run on in-memory SQLite (see conftest); no separate Postgres needed
         run: uv run pytest -q

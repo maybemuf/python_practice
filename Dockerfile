@@ -1,15 +1,15 @@
 FROM python:3.13-slim
 
-# libmagic — потрібен python-magic для визначення типу файлу по байтах
+# libmagic — required by python-magic to detect file type from bytes
 RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# uv — менеджер залежностей
+# uv — dependency manager
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Спершу лише маніфести — щоб шар із залежностями кешувався між білдами
+# Manifests first — so the dependency layer is cached between builds
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
