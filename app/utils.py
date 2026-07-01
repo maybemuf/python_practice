@@ -1,15 +1,15 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def ensure_utc(dt: datetime) -> datetime:
-    """Гарантує timezone-aware datetime у UTC.
+    """Guarantees a timezone-aware datetime in UTC.
 
-    Postgres (timestamptz) повертає aware-значення, а SQLite зберігає naive —
-    тож при порівнянні з datetime.now(timezone.utc) трактуємо naive як UTC,
-    щоб уникнути 'can't compare offset-naive and offset-aware datetimes'.
+    Postgres (timestamptz) returns aware values while SQLite stores naive ones —
+    so when comparing against datetime.now(timezone.utc) we treat naive as UTC
+    to avoid 'can't compare offset-naive and offset-aware datetimes'.
     """
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
