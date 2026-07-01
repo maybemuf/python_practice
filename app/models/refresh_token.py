@@ -1,9 +1,11 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
+
 from sqlalchemy import DateTime
 from sqlmodel import Field
 
 from app.models.timestamp import TimestampMixin
+
 
 class RefreshToken(TimestampMixin, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

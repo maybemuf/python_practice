@@ -3,6 +3,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.models.otp import OtpRawCodeStr
 from app.utils import validate_password
 
+
 class ChangePasswordBody(BaseModel):
     old_password: str
     new_password: str = Field(min_length=8, max_length=128)

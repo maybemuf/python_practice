@@ -1,4 +1,6 @@
-from typing import AsyncIterator, BinaryIO, Protocol
+from collections.abc import AsyncIterator
+from typing import BinaryIO, Protocol
+
 
 class Storage(Protocol):
     async def save(self, key: str, source: BinaryIO, content_type: str) -> None: ...

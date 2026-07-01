@@ -1,11 +1,13 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from sqlalchemy import DateTime
-from sqlmodel import SQLModel, Field
+from sqlmodel import Field, SQLModel
 
 from app.models.timestamp import TimestampMixin
 from app.utils import validate_password
+
 
 class UserBase(SQLModel):
     email: EmailStr = Field(index=True, unique=True)

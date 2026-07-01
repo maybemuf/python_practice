@@ -1,11 +1,13 @@
-from datetime import datetime
-from enum import Enum
 import uuid
+from datetime import datetime
+from enum import StrEnum
+
 from sqlmodel import Field, SQLModel
 
 from app.models.timestamp import TimestampMixin
 
-class FileStatus(str, Enum):
+
+class FileStatus(StrEnum):
     PENDING = "pending"
     SAVED = "clean"
     INFECTED = "infected"
