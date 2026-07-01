@@ -1,78 +1,79 @@
 # Practice API
 
-REST API на **FastAPI** з повноцінною автентифікацією та файловим сховищем.
-Навчальний проєкт, зроблений на продакшн-патернах.
+A REST API built with **FastAPI**, featuring full authentication and file storage.
+A learning project done with production-grade patterns.
 
-## Можливості
+## Features
 
-- **JWT-автентифікація** (access + refresh токени).
-- **Refresh-token rotation з reuse detection** — повторне використання відкликаного
-  токена трактується як крадіжка й гасить усі токени користувача.
-- **OTP-флоу** для верифікації email та скидання пароля; коди зберігаються
-  захешованими (HMAC + pepper), з лімітом спроб (антибрутфорс).
-- **Anti-enumeration** — реєстрація/скидання пароля не розкривають, чи існує акаунт.
-- **Файлове сховище**: валідація типу по magic-байтах (не по клієнтському
-  `Content-Type`), ліміт розміру зі стрімінгом, захист від path traversal,
-  ізоляція файлів по власнику.
-- **Єдиний формат помилок** з машиночитним полем `type` (див. нижче).
-- Storage — за протоколом (`Protocol`), тож локальне сховище легко замінити на S3.
+- **JWT authentication** (access + refresh tokens).
+- **Refresh-token rotation with reuse detection** — reusing a revoked token is
+  treated as theft and revokes all of the user's tokens.
+- **OTP flows** for email verification and password reset; codes are stored
+  hashed (HMAC + pepper), with an attempt limit (anti-bruteforce).
+- **Anti-enumeration** — registration/password reset don't reveal whether an
+  account exists.
+- **File storage**: type validation by magic bytes (not the client's
+  `Content-Type`), size limit with streaming, path-traversal protection, and
+  per-owner file isolation.
+- **Unified error format** with a machine-readable `type` field (see below).
+- Storage sits behind a `Protocol`, so local storage is easy to swap for S3.
 
-## Стек
+## Stack
 
 Python 3.13 · FastAPI · SQLModel (SQLAlchemy) · Alembic · PostgreSQL · pwdlib (argon2)
 · PyJWT · pytest · ruff · uv.
 
-## Архітектура
+## Architecture
 
-Шарова структура — роутери тонкі, бізнес-логіка в сервісах:
+Layered structure — thin routers, business logic in services:
 
 ```
 app/
-  main.py              # app, глобальні обробники помилок, /health
-  settings.py          # конфіг (pydantic-settings)
-  routers/             # HTTP-шар: тільки парсинг вводу + виклик сервісу
+  main.py              # app, global exception handlers, /health
+  settings.py          # config (pydantic-settings)
+  routers/             # HTTP layer: only input parsing + service call
     auth.py  users.py  files.py
-  services/            # бізнес-логіка (без HTTP)
-    auth_service.py    # register/login/rotate/reset/verify, робота з токенами й OTP
+  services/            # business logic (no HTTP)
+    auth_service.py    # register/login/rotate/reset/verify, token & OTP handling
     storage/           # Protocol + LocalStorage + MeteredReader
   dependencies/        # FastAPI DI: session, current_user, oauth2, logger
-  models/              # SQLModel-таблиці + Pydantic-схеми (DTO) + винятки
+  models/              # SQLModel tables + Pydantic schemas (DTOs) + exceptions
 ```
 
-## Запуск
+## Running
 
 ```bash
-# 1. Залежності (uv)
+# 1. Dependencies (uv)
 uv sync
 
-# 2. Конфіг
-cp .env.example .env        # згенеруй секрети: openssl rand -hex 32
+# 2. Config
+cp .env.example .env        # generate secrets: openssl rand -hex 32
 
-# 3. Підняти Postgres
+# 3. Start Postgres
 docker compose up -d db
 
-# 4. Міграції
+# 4. Migrations
 uv run alembic upgrade head
 
-# 5. Сервер
+# 5. Server
 uv run fastapi dev app/main.py
 ```
 
-Swagger UI: http://localhost:8000/docs · health-check: `GET /health`.
+Swagger UI: http://localhost:8000/docs · health check: `GET /health`.
 
-Повністю в Docker (API + БД): `docker compose up --build`.
+Fully in Docker (API + DB): `docker compose up --build`.
 
-## Тести та лінт
+## Tests and lint
 
 ```bash
-uv run pytest        # 117 тестів
-uv run ruff check .  # лінт
+uv run pytest        # 117 tests
+uv run ruff check .  # lint
 ```
 
-## Формат помилок
+## Error format
 
-Усі помилки (включно з 422-валідацією) мають єдину форму — роби `switch` по `type`,
-а не по `message`:
+Every error (including 422 validation) has a single shape — switch on `type`,
+not on `message`:
 
 ```json
 {
@@ -82,26 +83,26 @@ uv run ruff check .  # лінт
 }
 ```
 
-## Ендпоінти
+## Endpoints
 
-| Метод | Шлях | Опис |
-|-------|------|------|
-| POST | `/auth/register` | реєстрація + видача токенів |
-| POST | `/auth/login` | логін (OAuth2 form-data) |
-| POST | `/auth/refresh` | ротація refresh-токена |
-| POST | `/auth/change-password` | зміна пароля (auth) |
-| POST | `/auth/request-reset-password` | запит OTP на скидання пароля |
-| POST | `/auth/reset-password` | скидання пароля по OTP |
-| POST | `/auth/request-verify-email` | запит OTP на верифікацію email (auth) |
-| POST | `/auth/verify-email` | верифікація email по OTP (auth) |
-| GET | `/users/me` | профіль поточного юзера |
-| POST | `/files` | завантаження файлу (verified) |
-| GET | `/files` | список файлів з пагінацією |
-| GET | `/files/{id}` | завантаження вмісту |
-| GET | `/files/{id}/metadata` | метадані файлу |
-| DELETE | `/files/{id}` | видалення файлу |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/register` | register + issue tokens |
+| POST | `/auth/login` | login (OAuth2 form-data) |
+| POST | `/auth/refresh` | rotate refresh token |
+| POST | `/auth/change-password` | change password (auth) |
+| POST | `/auth/request-reset-password` | request a password-reset OTP |
+| POST | `/auth/reset-password` | reset password via OTP |
+| POST | `/auth/request-verify-email` | request an email-verification OTP (auth) |
+| POST | `/auth/verify-email` | verify email via OTP (auth) |
+| GET | `/users/me` | current user's profile |
+| POST | `/files` | upload a file (verified) |
+| GET | `/files` | list files with pagination |
+| GET | `/files/{id}` | download content |
+| GET | `/files/{id}/metadata` | file metadata |
+| DELETE | `/files/{id}` | delete a file |
 
-## Відомі обмеження
+## Known limitations
 
-- Відправка email не реалізована — OTP-коди лише логуються (`logger.debug`).
-  Для реального використання підключіть email-провайдера в `auth_service`.
+- Email sending is not implemented — OTP codes are only logged (`logger.debug`).
+  For real use, plug an email provider into `auth_service`.
