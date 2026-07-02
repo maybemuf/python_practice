@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-
+from fastapi.middleware import cors
 from app.dependencies import logger
 from app.models.exceptions import ApiException, ApiExceptionType, InternalServerError
 from app.routers import auth, files, users
@@ -19,6 +19,17 @@ app = FastAPI(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(files.router)
+
+app.add_middleware(
+    cors.CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.exception_handler(ApiException)
 def api_exception_handler(request: Request, exception: ApiException):
