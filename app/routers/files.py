@@ -1,5 +1,6 @@
+import base64
 import uuid
-from typing import Annotated
+from typing import Annotated, AsyncIterable
 from urllib.parse import quote
 
 import magic
@@ -7,21 +8,50 @@ from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 from starlette.status import HTTP_204_NO_CONTENT
-
+from anthropic import Anthropic
 from app.dependencies import SessionDep
-from app.dependencies.user import VerifiedUserDep
+from app.dependencies.user import VerifiedUserDep, check_user_verified
 from app.models.exceptions import (
     FileMissingError,
+    UnsupportedFileTypeError,
     UnsupportedMediaTypeError,
     error_responses,
 )
 from app.models.file import FileObject, FilePublic, FileStatus
 from app.models.pagination import PaginationQuery
+from app.services.pdf_service import convert_to_pdf
 from app.services.storage import storage
 from app.services.storage.metered import MeteredReader
 from app.settings import settings
 
 mime = magic.Magic(mime=True)
+
+client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+IMAGE_CONTENT_TYPES: list[str] = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+]
+
+PDF_CONTENT_TYPES: list[str] = [
+    "application/pdf",
+]
+
+TEXT_CONTENT_TYPES: list[str] = [
+    "text/plain",
+    "text/csv",
+]
+
+OFFICE_CONTENT_TYPES: list[str] = [
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]
 
 ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "image/jpeg": "jpg",
@@ -46,6 +76,39 @@ def get_user_file_obj(file_id: uuid.UUID, session: SessionDep, user: VerifiedUse
     return file_obj
 
 UserFileObjDep = Annotated[FileObject, Depends(get_user_file_obj)]
+
+async def build_document_content_block(file: UserFileObjDep):
+    file_bytes = await storage.read_bytes(file.storage_key)
+    content_type = file.content_type
+
+    if content_type in IMAGE_CONTENT_TYPES:
+        return [{"type": "image", "source": {
+            "type": "base64", "media_type": content_type,
+            "data": base64.standard_b64encode(file_bytes).decode(),
+        }}]
+
+    if content_type in PDF_CONTENT_TYPES:
+        return [{"type": "document", "source": {
+            "type": "base64", "media_type": "application/pdf",
+            "data": base64.standard_b64encode(file_bytes).decode(),
+        }}]
+
+    if content_type in TEXT_CONTENT_TYPES:
+        text = file_bytes.decode("utf-8", errors="replace")
+        return [{"type": "text", "text": f"File contents:\n\n{text}"}]
+
+    if content_type in OFFICE_CONTENT_TYPES:
+        # LibreOffice detects the input format from the file extension, so pass the
+        # extension derived from the stored content_type — not the user's filename.
+        pdf_bytes = await convert_to_pdf(file_bytes, f".{ALLOWED_CONTENT_TYPES[content_type]}")
+        return [{"type": "document", "source": {
+            "type": "base64", "media_type": "application/pdf",
+            "data": base64.standard_b64encode(pdf_bytes).decode(),
+        }}]
+
+    raise UnsupportedFileTypeError(content_type)
+
+DocuemntBlockDep = Annotated[list[dict], Depends(build_document_content_block)]
 
 router = APIRouter(
     prefix="/files",
@@ -153,3 +216,23 @@ def get_user_file_objects(
 def get_user_file_metadata(file: UserFileObjDep) -> FileObject:
     """File metadata without downloading the content. Owner only."""
     return file
+
+@router.get('/{file_id}/summarize', responses=error_responses(401, 403, 404))
+def summarize_file(document_content: DocuemntBlockDep) -> StreamingResponse:
+    def generate():
+        with client.messages.stream(
+            model=settings.DEFAULT_MODEL,
+            max_tokens=4096,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        *document_content,
+                        {"type": "text", "text": "Summarize this file."},
+                    ],
+                }
+            ],
+        ) as stream:
+            yield from stream.text_stream
+
+    return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")

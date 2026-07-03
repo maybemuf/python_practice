@@ -24,6 +24,13 @@ class LocalStorage:
             while chunk := await source.read(1024 * 1024):   # stream in 1 MB chunks
                 await f.write(chunk)
 
+    async def read_bytes(self, key: str) -> bytes:
+        path = self._path(key)
+        if not await aiofiles.os.path.exists(path):
+            raise FileMissingError()
+        async with aiofiles.open(path, "rb") as f:
+            return await f.read()
+
     async def open_stream(self, key: str) -> AsyncIterator[bytes]:
         path = self._path(key)
         if not await aiofiles.os.path.exists(path):

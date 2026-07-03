@@ -16,5 +16,7 @@ class Settings(BaseSettings):
     OTP_PEPPER: str
     STORAGE_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10 MB
+    ANTHROPIC_API_KEY: str
+    DEFAULT_MODEL: str
 
 settings = Settings()

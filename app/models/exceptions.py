@@ -18,9 +18,11 @@ class ApiExceptionType(StrEnum):
     EMAIL_IS_UNVERIFIED = "email-unverified"
     VALIDATION_ERROR = "validation-error"
     UNSUPPORTED_MEDIA_TYPE = "unsupported-media-type"
+    UNSUPPORTED_FILE_TYPE = "unsupported-file-type"
     FILE_TOO_LARGE = "file-too-large"
     FILE_NOT_FOUND = "file-not-found"
     FILE_ACCESS_DENIED = "file-access-denied"
+    PDF_CONVERSION_FAILED = "pdf-conversion-failed"
 
 class ApiException(Exception):
     """Base Exception Class for the application"""
@@ -116,6 +118,11 @@ class UnsupportedMediaTypeError(ApiException):
     type = ApiExceptionType.UNSUPPORTED_MEDIA_TYPE
     message = "Unsupported file type"
 
+class UnsupportedFileTypeError(ApiException):
+    status_code = 415
+    type = ApiExceptionType.UNSUPPORTED_FILE_TYPE
+    message = "Unsupported file type"
+
 class FileTooLargeError(ApiException):
     status_code = 413
     type = ApiExceptionType.FILE_TOO_LARGE
@@ -130,6 +137,11 @@ class FileAccessDeniedError(ApiException):
     status_code = 403
     type = ApiExceptionType.FILE_ACCESS_DENIED
     message = "Access to this file is denied"
+
+class PdfConversionError(ApiException):
+    status_code = 500
+    type = ApiExceptionType.PDF_CONVERSION_FAILED
+    message = "Failed to convert file to PDF"
 
 
 class ErrorResponse(BaseModel):

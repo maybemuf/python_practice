@@ -1,7 +1,15 @@
 FROM python:3.13-slim
 
-# libmagic — required by python-magic to detect file type from bytes
-RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 \
+# System dependencies:
+#   libmagic1 — python-magic file-type detection from bytes
+#   libreoffice-{writer,calc,impress} — headless office→PDF conversion (doc/docx, xls/xlsx, ppt/pptx)
+#   fonts-liberation — sane default fonts so converted PDFs render correctly
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # uv — dependency manager
