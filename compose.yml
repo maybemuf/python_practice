@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:17
+    container_name: practice-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: '${DB_NAME}'
+      POSTGRES_USER: '${DB_USER}'
+    ports:
+      - "8001:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build: .
+    container_name: practice-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_SERVER: db
+      POSTGRES_DB: '${DB_NAME}'
+      POSTGRES_USER: '${DB_USER}'
+      DEFAULT_ANTHROPIC_MODEL: '${DEFAULT_ANTHROPIC_MODEL}'
+    develop:
+      watch:
+        - action: sync
+          path: ./app/
+          target: /app/app
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: pyproject.toml
+        - action: rebuild
+          path: uv.lock
+    secrets:
+      - postgres_password
+      - anthropic_api_key
+      - jwt_secret
+      - otp_pepper
+
+volumes:
+  pgdata:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  otp_pepper:
+    file: ./secrets/otp_pepper
