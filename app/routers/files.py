@@ -221,7 +221,7 @@ def get_user_file_metadata(file: UserFileObjDep) -> FileObject:
 def summarize_file(document_content: DocuemntBlockDep) -> StreamingResponse:
     def generate():
         with client.messages.stream(
-            model=settings.DEFAULT_MODEL,
+            model=settings.DEFAULT_ANTHROPIC_MODEL,
             max_tokens=4096,
             messages=[
                 {

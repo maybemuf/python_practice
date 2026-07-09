@@ -30,7 +30,7 @@ from app.settings import settings
 
 
 def _decode(token: str) -> dict:
-    return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
 
 
 # ---------------------------------------------------------------------------

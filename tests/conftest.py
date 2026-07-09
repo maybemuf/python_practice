@@ -2,10 +2,18 @@ import os
 
 # Set test env vars BEFORE importing app/settings — otherwise Settings() will
 # try to read .env or fail on the missing required fields.
-os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-not-for-prod-0123456789")
+os.environ.setdefault("JWT_SECRET", "test-secret-key-not-for-prod-0123456789")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+os.environ.setdefault("OTP_PEPPER", "test-otp-pepper")
+os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
+os.environ.setdefault("DEFAULT_ANTHROPIC_MODEL", "claude-sonnet-4-5")
+# Postgres fields are required by Settings(), but tests never open a real
+# connection — the `engine` fixture uses in-memory SQLite and overrides get_session.
+os.environ.setdefault("POSTGRES_SERVER", "localhost")
+os.environ.setdefault("POSTGRES_USER", "test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+os.environ.setdefault("POSTGRES_DB", "test")
 
 from collections.abc import Generator
 

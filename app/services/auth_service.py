@@ -45,7 +45,7 @@ def create_access_token(user_id: uuid.UUID) -> str:
         "sub": str(user_id),
         "exp": datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
-    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 def hash_refresh_token(token: str) -> str:
