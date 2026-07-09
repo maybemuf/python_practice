@@ -33,6 +33,10 @@ services:
       POSTGRES_DB: '${DB_NAME}'
       POSTGRES_USER: '${DB_USER}'
       DEFAULT_ANTHROPIC_MODEL: '${DEFAULT_ANTHROPIC_MODEL}'
+    volumes:
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - user_files:/app/uploads
     develop:
       watch:
         - action: sync
@@ -52,6 +56,7 @@ services:
 
 volumes:
   pgdata:
+  user_files:
 
 secrets:
   postgres_password:

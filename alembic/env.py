@@ -6,6 +6,8 @@ from sqlmodel import SQLModel
 from alembic import context
 from app.settings import settings
 
+import app.models  # noqa: F401 — imports all models so they register in SQLModel.metadata
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -28,6 +30,14 @@ target_metadata = SQLModel.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+naming_convention = {
+    "ix": "ix_%(table_name)s_%(column_0_label)s",  # Added table_name for more uniqueness
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",  # Used constraint_name for check constraints
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -42,13 +52,6 @@ def run_migrations_offline() -> None:
 
     """
     url = config.get_main_option("sqlalchemy.url")
-    naming_convention = {
-        "ix": "ix_%(table_name)s_%(column_0_label)s",  # Added table_name for more uniqueness
-        "uq": "uq_%(table_name)s_%(column_0_name)s",
-        "ck": "ck_%(table_name)s_%(constraint_name)s",  # Used constraint_name for check constraints
-        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-        "pk": "pk_%(table_name)s"
-    }
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -78,7 +81,11 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            naming_convention=naming_convention,
+            compare_type=True,
+            render_as_batch=True,
         )
 
         with context.begin_transaction():
