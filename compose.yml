@@ -34,16 +34,12 @@ services:
       POSTGRES_USER: '${DB_USER}'
       DEFAULT_ANTHROPIC_MODEL: '${DEFAULT_ANTHROPIC_MODEL}'
     volumes:
+      - ./app:/app/app
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
       - user_files:/app/uploads
     develop:
       watch:
-        - action: sync
-          path: ./app/
-          target: /app/app
-          ignore:
-            - .venv/
         - action: rebuild
           path: pyproject.toml
         - action: rebuild
